@@ -23,6 +23,11 @@ let screenShareAllowed = false;
 let isScreenSharing = false;
 let pinnedSid = null;
 let handRaised = false;
+let recordMode = 'all';
+let pendingRoomData = null;
+let previewStream = null;
+let previewAudio = true;
+let previewVideo = true;
 const isMobile = /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
 
 const ICE = {iceServers:[
@@ -36,25 +41,67 @@ document.addEventListener('DOMContentLoaded', () => {
   if (token) { verifyToken(); } else { showAuth(); }
 });
 
-function showAuth() {
-  document.getElementById('auth-screen').style.display='flex';
-  document.getElementById('lobby-screen').style.display='none';
-  document.getElementById('meeting-screen').style.display='none';
+function hideAll(){['auth-screen','lobby-screen','meeting-screen','preview-screen'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});}
+function showAuth(){hideAll();document.getElementById('auth-screen').style.display='flex';}
+function showLobby(){hideAll();document.getElementById('lobby-screen').style.display='flex';document.getElementById('lobby-user').textContent=currentUser.username;document.getElementById('lobby-avatar').textContent=currentUser.username[0].toUpperCase();connectSocket();}
+function showMeeting(){hideAll();document.getElementById('meeting-screen').style.display='flex';}
+function showPreview(){hideAll();document.getElementById('preview-screen').style.display='flex';}
+function showLoading(msg){document.getElementById('loading-text').textContent=msg||'Connecting...';document.getElementById('loading-overlay').style.display='flex';}
+function hideLoading(){document.getElementById('loading-overlay').style.display='none';}
+
+async function openPreview(data){
+  pendingRoomData=data;
+  showPreview();
+  document.getElementById('preview-room-name').textContent=data.room.name||'Meeting';
+  document.getElementById('preview-room-code').textContent=data.room.code;
+  if(currentUser)document.getElementById('preview-avatar-letter').textContent=currentUser.username[0].toUpperCase();
+  previewAudio=true;previewVideo=true;
+  const pmb=document.getElementById('preview-mic-btn');if(pmb){pmb.classList.remove('active');pmb.textContent='🎤';}
+  const pcb=document.getElementById('preview-cam-btn');if(pcb){pcb.classList.remove('active');pcb.textContent='📹';}
+  document.getElementById('preview-error').style.display='none';
+  try{
+    previewStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:true});
+    const vid=document.getElementById('preview-video');vid.srcObject=previewStream;vid.style.display='block';
+    document.getElementById('preview-no-cam').style.display='none';
+    document.getElementById('preview-avatar').style.display='none';
+  }catch(e){
+    previewStream=null;previewVideo=false;
+    try{previewStream=await navigator.mediaDevices.getUserMedia({audio:true});previewAudio=true;}catch(e2){previewStream=null;previewAudio=false;}
+    document.getElementById('preview-video').style.display='none';
+    document.getElementById('preview-no-cam').style.display='flex';
+    if(!previewStream)document.getElementById('preview-error').style.display='flex';
+  }
 }
 
-function showLobby() {
-  document.getElementById('auth-screen').style.display='none';
-  document.getElementById('lobby-screen').style.display='flex';
-  document.getElementById('meeting-screen').style.display='none';
-  document.getElementById('lobby-user').textContent=currentUser.username;
-  document.getElementById('lobby-avatar').textContent=currentUser.username[0].toUpperCase();
-  connectSocket();
+function togglePreviewMic(){
+  if(!previewStream)return;previewAudio=!previewAudio;
+  previewStream.getAudioTracks().forEach(t=>t.enabled=previewAudio);
+  const b=document.getElementById('preview-mic-btn');b.textContent=previewAudio?'🎤':'🔇';b.classList.toggle('active',!previewAudio);
 }
-
-function showMeeting() {
-  document.getElementById('auth-screen').style.display='none';
-  document.getElementById('lobby-screen').style.display='none';
-  document.getElementById('meeting-screen').style.display='flex';
+function togglePreviewCam(){
+  if(!previewStream)return;previewVideo=!previewVideo;
+  previewStream.getVideoTracks().forEach(t=>t.enabled=previewVideo);
+  const b=document.getElementById('preview-cam-btn');b.textContent=previewVideo?'📹':'🚫';b.classList.toggle('active',!previewVideo);
+  document.getElementById('preview-video').style.display=previewVideo?'block':'none';
+  document.getElementById('preview-no-cam').style.display=previewVideo?'none':'flex';
+}
+function cancelPreview(){
+  if(previewStream){previewStream.getTracks().forEach(t=>t.stop());previewStream=null;}
+  pendingRoomData=null;showLobby();
+}
+async function joinMeetingFromPreview(){
+  if(!pendingRoomData)return;
+  const data=pendingRoomData;pendingRoomData=null;
+  localStream=previewStream;previewStream=null;
+  audioEnabled=previewAudio;videoEnabled=previewVideo;
+  roomCode=data.room.code;myRole=data.role;
+  screenShareAllowed=(myRole==='host');isScreenSharing=false;
+  showMeeting();
+  document.getElementById('room-code-display').textContent=roomCode;
+  updateParticipants(data.participants);
+  loadChatHistory();renderLocalTile();startSpeakerDetection();
+  socket.emit('join_call',{});startTimer();updateToolbarState();
+  document.getElementById('header-p-count').textContent='👥 '+(data.participants?data.participants.length:1);
 }
 
 // ===== AUTH =====
@@ -201,26 +248,8 @@ function joinRoom(){
 }
 
 async function enterRoom(data){
-  roomCode=data.room.code;myRole=data.role;
-  screenShareAllowed=(myRole==='host');
-  isScreenSharing=false;
-  showMeeting();
-  document.getElementById('room-code-display').textContent=roomCode;
-  updateParticipants(data.participants);
-  loadChatHistory();
-  // get media and join call
-  try{
-    localStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-    audioEnabled=true;videoEnabled=true;
-  }catch(e){
-    try{localStream=await navigator.mediaDevices.getUserMedia({video:false,audio:true});audioEnabled=true;videoEnabled=false;}
-    catch(e2){toast('No camera/mic access','error');localStream=null;}
-  }
-  renderLocalTile();
-  startSpeakerDetection();
-  socket.emit('join_call',{});
-  startTimer();
-  updateToolbarState();
+  // Go to preview screen instead of directly joining
+  openPreview(data);
 }
 
 async function loadChatHistory(){
@@ -532,15 +561,27 @@ function respondScreenShare(sid,approved){
 }
 
 function toggleRecordBtn(){
-  if(isRecording){stopRecording();}else{startRecording();}
+  if(isRecording){stopRecording();return;}
+  // Show record mode popup
+  document.getElementById('record-mode-popup').style.display='flex';
+}
+function closeRecordPopup(){document.getElementById('record-mode-popup').style.display='none';}
+function startRecordMode(mode){
+  closeRecordPopup();recordMode=mode;startRecording();
 }
 
 function startRecording(){
-  if(!localStream||isRecording)return;
+  if(isRecording)return;
   const tracks=[];
-  if(localStream)localStream.getTracks().forEach(t=>tracks.push(t));
-  // add remote audio tracks
-  Object.values(peers).forEach(p=>{if(p.stream)p.stream.getAudioTracks().forEach(t=>tracks.push(t));});
+  if(recordMode==='self'){
+    // Record only local stream
+    if(localStream)localStream.getTracks().forEach(t=>tracks.push(t));
+  } else {
+    // Record all: local video + all audio
+    if(localStream)localStream.getTracks().forEach(t=>tracks.push(t));
+    Object.values(peers).forEach(p=>{if(p.stream)p.stream.getAudioTracks().forEach(t=>tracks.push(t));});
+  }
+  if(!tracks.length){toast('No media to record','error');return;}
   const combined=new MediaStream(tracks);
   recordedChunks=[];
   const mimeTypes=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'];
@@ -548,12 +589,12 @@ function startRecording(){
   for(const mime of mimeTypes){if(MediaRecorder.isTypeSupported(mime)){selectedMime=mime;break;}}
   try{
     mediaRecorder=new MediaRecorder(combined,selectedMime?{mimeType:selectedMime}:undefined);
-  }catch(e){toast('Recording not supported on this device','error');return;}
+  }catch(e){toast('Recording not supported','error');return;}
   mediaRecorder.ondataavailable=(e)=>{if(e.data.size>0)recordedChunks.push(e.data);};
   mediaRecorder.onstop=()=>{saveRecording();};
   mediaRecorder.start(1000);isRecording=true;
   document.getElementById('btn-record').classList.add('active','recording');
-  toast('⏺ Recording started','success');
+  toast('⏺ Recording '+(recordMode==='self'?'(You only)':'(All)')+'...','success');
 }
 
 function stopRecording(){

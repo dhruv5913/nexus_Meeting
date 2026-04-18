@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>NexusNet — Video Conferencing</title>
+    <title>Nexus Meating — Video Conferencing</title>
     <meta name="description" content="Professional video conferencing with group calls, screen sharing, chat, and recording">
     <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/static/css/style.css">
@@ -14,11 +14,9 @@
 <div id="auth-screen">
     <div class="auth-card">
         <div class="logo">
-            <h1>NexusNet</h1>
+            <h1>Nexus Meating</h1>
             <p>Professional Video Conferencing</p>
         </div>
-
-        <!-- Login Form -->
         <div id="login-form">
             <div id="login-error" class="auth-error"></div>
             <div class="form-group">
@@ -35,8 +33,6 @@
                 Don't have an account? <a onclick="showRegister()">Create one</a>
             </div>
         </div>
-
-        <!-- Register Form -->
         <div id="register-form" style="display:none">
             <div id="reg-error" class="auth-error"></div>
             <div class="form-group">
@@ -62,15 +58,13 @@
 
 <!-- ============ LOBBY SCREEN ============ -->
 <div id="lobby-screen" style="display:none">
-    <div class="brand-lobby"><h1>NexusNet</h1></div>
+    <div class="brand-lobby"><h1>Nexus Meating</h1></div>
     <div class="user-bar">
         <div class="avatar" id="lobby-avatar">U</div>
         <span id="lobby-user">User</span>
         <button class="btn btn-sm btn-secondary" onclick="doLogout()" style="padding:6px 12px;font-size:12px">Logout</button>
     </div>
-
     <div class="lobby-container">
-        <!-- Create Room Card -->
         <div class="lobby-card">
             <div class="icon">🎬</div>
             <h2>New Meeting</h2>
@@ -80,8 +74,6 @@
             </div>
             <button class="btn btn-primary" onclick="createRoom()">Create Room</button>
         </div>
-
-        <!-- Join Room Card -->
         <div class="lobby-card">
             <div class="icon">🔗</div>
             <h2>Join Meeting</h2>
@@ -95,27 +87,62 @@
     </div>
 </div>
 
+<!-- ============ PREVIEW SCREEN ============ -->
+<div id="preview-screen" style="display:none">
+    <div class="preview-container">
+        <h2>Get Ready</h2>
+        <p class="preview-subtitle">Check your camera & mic before joining</p>
+        <div class="preview-video-wrap">
+            <video id="preview-video" autoplay muted playsinline></video>
+            <div id="preview-avatar" class="preview-avatar-placeholder" style="display:none">
+                <span id="preview-avatar-letter">?</span>
+            </div>
+            <div id="preview-no-cam" class="preview-no-cam" style="display:none">
+                <span>📷</span>
+                <p>Camera is off</p>
+            </div>
+        </div>
+        <div id="preview-error" class="preview-error" style="display:none">
+            <span>⚠️</span>
+            <p>Camera/Mic access denied. Please allow permissions and reload.</p>
+        </div>
+        <div class="preview-controls">
+            <button class="toolbar-btn" id="preview-mic-btn" onclick="togglePreviewMic()">🎤</button>
+            <button class="toolbar-btn" id="preview-cam-btn" onclick="togglePreviewCam()">📹</button>
+        </div>
+        <div class="preview-info">
+            <span id="preview-room-name">Meeting</span>
+            <span id="preview-room-code" class="room-code-badge">------</span>
+        </div>
+        <button class="btn btn-primary preview-join-btn" id="preview-join-btn" onclick="joinMeetingFromPreview()">Join Meeting</button>
+        <button class="btn btn-secondary preview-back-btn" onclick="cancelPreview()">Cancel</button>
+    </div>
+</div>
+
+<!-- ============ LOADING OVERLAY ============ -->
+<div id="loading-overlay" style="display:none">
+    <div class="loading-spinner"></div>
+    <p id="loading-text">Connecting...</p>
+</div>
+
 <!-- ============ MEETING SCREEN ============ -->
 <div id="meeting-screen" style="display:none">
-    <!-- Header -->
     <div class="meeting-header">
         <div class="left">
-            <span class="brand">NexusNet</span>
+            <span class="brand">Nexus Meating</span>
             <span class="room-code-badge" id="room-code-display" onclick="copyRoomCode()" title="Click to copy">------</span>
         </div>
         <div class="right">
             <span class="timer" id="call-timer">00:00</span>
+            <span class="participant-count-badge" id="header-p-count">👥 0</span>
         </div>
     </div>
 
-    <!-- Body -->
     <div class="meeting-body">
-        <!-- Video Area -->
         <div class="video-area" id="video-area">
             <div class="video-grid" id="video-grid" data-count="0"></div>
         </div>
 
-        <!-- Chat Panel -->
         <div class="side-panel" id="chat-panel">
             <div class="panel-header">
                 <h3>💬 Chat</h3>
@@ -128,7 +155,6 @@
             </div>
         </div>
 
-        <!-- Participants Panel -->
         <div class="side-panel" id="participants-panel">
             <div class="panel-header">
                 <h3>👥 Participants (<span id="participants-count">0</span>)</h3>
@@ -146,22 +172,30 @@
         <button onclick="sendEmoji('❤️')">❤️</button>
         <button onclick="sendEmoji('🎉')">🎉</button>
         <button onclick="sendEmoji('🔥')">🔥</button>
-        <button onclick="sendEmoji('😮')">😮</button>
-        <button onclick="sendEmoji('💯')">💯</button>
+    </div>
+
+    <!-- Record Mode Selector -->
+    <div class="record-mode-popup" id="record-mode-popup" style="display:none">
+        <div class="record-mode-card">
+            <h3>🎬 Recording Options</h3>
+            <button class="btn btn-primary btn-sm" onclick="startRecordMode('all')">⏺ Record All Participants</button>
+            <button class="btn btn-secondary btn-sm" onclick="startRecordMode('self')">👤 Record Only Me</button>
+            <button class="btn btn-secondary btn-sm" onclick="closeRecordPopup()">Cancel</button>
+        </div>
     </div>
 
     <!-- Toolbar -->
     <div class="toolbar">
         <div class="toolbar-group">
-            <button class="toolbar-btn" id="btn-mic" onclick="toggleAudio()" title="Toggle Microphone">🎤</button>
+            <button class="toolbar-btn" id="btn-mic" onclick="toggleAudio()" title="Mic">🎤</button>
             <span class="toolbar-label">Mic</span>
         </div>
         <div class="toolbar-group">
-            <button class="toolbar-btn" id="btn-cam" onclick="toggleVideo()" title="Toggle Camera">📹</button>
+            <button class="toolbar-btn" id="btn-cam" onclick="toggleVideo()" title="Camera">📹</button>
             <span class="toolbar-label">Camera</span>
         </div>
         <div class="toolbar-group">
-            <button class="toolbar-btn" id="btn-screen" onclick="toggleScreenShare()" title="Share Screen">🖥️</button>
+            <button class="toolbar-btn" id="btn-screen" onclick="toggleScreenShare()" title="Share">🖥️</button>
             <span class="toolbar-label">Share</span>
         </div>
         <div class="toolbar-group">
@@ -169,30 +203,29 @@
             <span class="toolbar-label">Record</span>
         </div>
         <div class="toolbar-group">
-            <button class="toolbar-btn" id="btn-hand" onclick="toggleHandRaise()" title="Raise Hand">🤚</button>
+            <button class="toolbar-btn" id="btn-hand" onclick="toggleHandRaise()" title="Hand">🤚</button>
             <span class="toolbar-label">Hand</span>
         </div>
         <div class="toolbar-group">
-            <button class="toolbar-btn" id="btn-react" onclick="toggleReactions()" title="Reactions">😀</button>
+            <button class="toolbar-btn" id="btn-react" onclick="toggleReactions()" title="React">😀</button>
             <span class="toolbar-label">React</span>
         </div>
         <div class="toolbar-group">
             <button class="toolbar-btn" onclick="toggleChat()" title="Chat">
-                💬
-                <span class="badge" id="chat-badge" style="display:none">!</span>
+                💬<span class="badge" id="chat-badge" style="display:none">!</span>
             </button>
             <span class="toolbar-label">Chat</span>
         </div>
         <div class="toolbar-group">
-            <button class="toolbar-btn" onclick="toggleParticipants()" title="Participants">👥</button>
+            <button class="toolbar-btn" onclick="toggleParticipants()" title="People">👥</button>
             <span class="toolbar-label">People</span>
         </div>
         <div class="toolbar-group">
             <button class="toolbar-btn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
-            <span class="toolbar-label">Fullscreen</span>
+            <span class="toolbar-label">Full</span>
         </div>
         <div class="toolbar-group">
-            <button class="toolbar-btn end-call" onclick="leaveMeeting()" title="Leave Meeting">📞</button>
+            <button class="toolbar-btn end-call" onclick="leaveMeeting()" title="Leave">📞</button>
             <span class="toolbar-label">Leave</span>
         </div>
     </div>
