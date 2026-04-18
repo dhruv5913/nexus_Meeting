@@ -440,6 +440,18 @@ function renderPeerTile(sid){
     tile.appendChild(ha);
   }
   if(pinnedSid===sid)tile.classList.add('pinned');else tile.classList.remove('pinned');
+  // Detect if this peer is sending a screen share (wide aspect ratio track)
+  if(peer.stream){
+    const vTrack=peer.stream.getVideoTracks()[0];
+    if(vTrack){
+      const settings=vTrack.getSettings();
+      if(settings.width&&settings.height&&settings.width/settings.height>1.8){
+        tile.classList.add('screen-share-tile');
+      } else {
+        tile.classList.remove('screen-share-tile');
+      }
+    }
+  }
   updateGridLayout();
 }
 
@@ -516,10 +528,21 @@ async function doStartScreenShare(){
     btn.classList.add('active');
     isScreenSharing=true;
     socket.emit('start_screen_share');
-    // show screen in local tile
+    // show screen in local tile with full-view (contain)
     const tile=document.getElementById('tile-local');
-    if(tile){tile.innerHTML='';const v=document.createElement('video');v.srcObject=screenStream;v.autoplay=true;v.muted=true;v.playsInline=true;tile.appendChild(v);
-      const lbl=document.createElement('div');lbl.className='tile-label';lbl.innerHTML='🖥️ Screen Share';tile.appendChild(lbl);}
+    if(tile){
+      tile.innerHTML='';tile.classList.add('screen-share-tile');
+      // Pin button
+      const pinBtn=document.createElement('button');pinBtn.className='pin-btn';pinBtn.title='Pin this video';
+      pinBtn.textContent='📌';pinBtn.onclick=(e)=>{e.stopPropagation();pinTile('local');};
+      tile.appendChild(pinBtn);
+      const v=document.createElement('video');v.srcObject=screenStream;v.autoplay=true;v.muted=true;v.playsInline=true;tile.appendChild(v);
+      const lbl=document.createElement('div');lbl.className='tile-label';lbl.innerHTML='🖥️ Screen Share';tile.appendChild(lbl);
+    }
+    // Auto-pin screen share for best view
+    pinnedSid='local';
+    updateGridLayout();
+    Object.keys(peers).forEach(s=>renderPeerTile(s));
   }catch(e){toast('Screen share cancelled or not supported');}
 }
 
@@ -533,6 +556,10 @@ function stopScreenShareLocal(){
     if(vt)Object.values(peers).forEach(p=>{const sender=p.pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)sender.replaceTrack(vt);});
   }
   if(btn)btn.classList.remove('active');
+  // Remove screen-share class and unpin if we were pinned
+  const tile=document.getElementById('tile-local');
+  if(tile)tile.classList.remove('screen-share-tile');
+  if(pinnedSid==='local')pinnedSid=null;
   renderLocalTile();
 }
 
