@@ -82,3 +82,31 @@ def register_call_handlers(socketio):
         if code:
             emit('speaker_update', {'sid': request.sid, 'level': data.get('level', 0)},
                  to=code, include_self=False)
+
+    @socketio.on('hand_raise')
+    def on_hand_raise(data):
+        if request.sid not in active_users:
+            return
+        u = active_users[request.sid]
+        code = u.get('room_code')
+        raised = data.get('raised', True)
+        if code:
+            emit('peer_hand_raise', {
+                'sid': request.sid,
+                'username': u['username'],
+                'raised': raised
+            }, to=code)
+
+    @socketio.on('emoji_reaction')
+    def on_emoji(data):
+        if request.sid not in active_users:
+            return
+        u = active_users[request.sid]
+        code = u.get('room_code')
+        emoji = data.get('emoji', '👍')
+        if code:
+            emit('peer_emoji_reaction', {
+                'sid': request.sid,
+                'username': u['username'],
+                'emoji': emoji
+            }, to=code)

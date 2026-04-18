@@ -111,7 +111,7 @@
     <!-- Body -->
     <div class="meeting-body">
         <!-- Video Area -->
-        <div class="video-area">
+        <div class="video-area" id="video-area">
             <div class="video-grid" id="video-grid" data-count="0"></div>
         </div>
 
@@ -138,6 +138,18 @@
         </div>
     </div>
 
+    <!-- Reactions Popup -->
+    <div class="reactions-popup" id="reactions-popup">
+        <button onclick="sendEmoji('👍')">👍</button>
+        <button onclick="sendEmoji('👏')">👏</button>
+        <button onclick="sendEmoji('😂')">😂</button>
+        <button onclick="sendEmoji('❤️')">❤️</button>
+        <button onclick="sendEmoji('🎉')">🎉</button>
+        <button onclick="sendEmoji('🔥')">🔥</button>
+        <button onclick="sendEmoji('😮')">😮</button>
+        <button onclick="sendEmoji('💯')">💯</button>
+    </div>
+
     <!-- Toolbar -->
     <div class="toolbar">
         <div class="toolbar-group">
@@ -157,6 +169,14 @@
             <span class="toolbar-label">Record</span>
         </div>
         <div class="toolbar-group">
+            <button class="toolbar-btn" id="btn-hand" onclick="toggleHandRaise()" title="Raise Hand">🤚</button>
+            <span class="toolbar-label">Hand</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="toolbar-btn" id="btn-react" onclick="toggleReactions()" title="Reactions">😀</button>
+            <span class="toolbar-label">React</span>
+        </div>
+        <div class="toolbar-group">
             <button class="toolbar-btn" onclick="toggleChat()" title="Chat">
                 💬
                 <span class="badge" id="chat-badge" style="display:none">!</span>
@@ -166,6 +186,10 @@
         <div class="toolbar-group">
             <button class="toolbar-btn" onclick="toggleParticipants()" title="Participants">👥</button>
             <span class="toolbar-label">People</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="toolbar-btn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
+            <span class="toolbar-label">Fullscreen</span>
         </div>
         <div class="toolbar-group">
             <button class="toolbar-btn end-call" onclick="leaveMeeting()" title="Leave Meeting">📞</button>

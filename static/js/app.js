@@ -21,6 +21,9 @@ let audioContext = null;
 let audioAnalyser = null;
 let screenShareAllowed = false;
 let isScreenSharing = false;
+let pinnedSid = null;
+let handRaised = false;
+const isMobile = /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
 
 const ICE = {iceServers:[
   {urls:'stun:stun.l.google.com:19302'},
@@ -174,6 +177,14 @@ function connectSocket(){
   socket.on('peer_screen_sharing',(d)=>{toast(d.username+' is sharing their screen');});
   socket.on('peer_screen_share_stopped',(d)=>{toast(d.username+' stopped sharing');});
   socket.on('participants_updated',(d)=>{updateParticipants(d.participants);});
+  // Hand raise
+  socket.on('peer_hand_raise',(d)=>{
+    const tile=document.getElementById('tile-'+(d.sid===socket.id?'local':d.sid));
+    if(tile){if(d.raised){tile.classList.add('hand-raised');let hi=tile.querySelector('.hand-indicator');if(!hi){hi=document.createElement('div');hi.className='hand-indicator';hi.textContent='✋';tile.appendChild(hi);}}else{tile.classList.remove('hand-raised');const hi=tile.querySelector('.hand-indicator');if(hi)hi.remove();}}
+    if(d.sid!==socket.id)toast(d.username+(d.raised?' raised hand':' lowered hand'));
+  });
+  // Emoji reactions
+  socket.on('peer_emoji_reaction',(d)=>{showFloatingEmoji(d.emoji,d.username);});
   socket.on('disconnect',()=>{toast('Disconnected','error');});
 }
 
@@ -244,10 +255,13 @@ async function createPeer(sid,username,initiator){
     renderPeerTile(sid);
     // separate audio element for reliable playback
     if(!peer.audioEl){
-      const a=document.createElement('audio');a.autoplay=true;a.style.display='none';
+      const a=document.createElement('audio');a.autoplay=true;a.playsInline=true;a.style.display='none';
       document.body.appendChild(a);peer.audioEl=a;
     }
     peer.audioEl.srcObject=e.streams[0];
+    // Fix autoplay policy
+    const playPromise=peer.audioEl.play();
+    if(playPromise)playPromise.catch(()=>{document.addEventListener('click',function tryPlay(){peer.audioEl.play().catch(()=>{});document.removeEventListener('click',tryPlay);},{once:true});});
   };
   pc.onicecandidate=(e)=>{
     if(e.candidate)socket.emit('webrtc_ice',{target_sid:sid,candidate:e.candidate});
@@ -316,6 +330,11 @@ function renderLocalTile(){
     grid.insertBefore(tile,grid.firstChild);
   }
   tile.innerHTML='';
+  // Pin button
+  const pinBtn=document.createElement('button');pinBtn.className='pin-btn';pinBtn.title='Pin this video';
+  pinBtn.textContent=pinnedSid==='local'?'📌':'📍';
+  pinBtn.onclick=(e)=>{e.stopPropagation();pinTile('local');};
+  tile.appendChild(pinBtn);
   if(localStream&&videoEnabled){
     const v=document.createElement('video');v.srcObject=localStream;v.autoplay=true;v.muted=true;v.playsInline=true;
     v.style.transform='scaleX(-1)';tile.appendChild(v);
@@ -326,6 +345,7 @@ function renderLocalTile(){
   const lbl=document.createElement('div');lbl.className='tile-label';
   lbl.innerHTML=(currentUser?currentUser.username:'You')+' (You) '+(audioEnabled?'🎤':'<span class="mic-off">🔇</span>');
   tile.appendChild(lbl);
+  if(pinnedSid==='local')tile.classList.add('pinned');else tile.classList.remove('pinned');
   updateGridLayout();
 }
 
@@ -340,6 +360,11 @@ function renderPeerTile(sid){
     grid.appendChild(tile);
   }
   tile.innerHTML='';
+  // Pin button
+  const pinBtn=document.createElement('button');pinBtn.className='pin-btn';pinBtn.title='Pin this video';
+  pinBtn.textContent=pinnedSid===sid?'📌':'📍';
+  pinBtn.onclick=(e)=>{e.stopPropagation();pinTile(sid);};
+  tile.appendChild(pinBtn);
   if(peer.stream&&peer.video!==false){
     const v=document.createElement('video');v.srcObject=peer.stream;v.autoplay=true;v.playsInline=true;
     tile.appendChild(v);
@@ -356,6 +381,7 @@ function renderPeerTile(sid){
     ha.innerHTML=`<button onclick="hostMute('${sid}')" title="Mute">🔇</button><button onclick="hostVideoOff('${sid}')" title="Cam off">📷</button><button onclick="hostKick('${sid}')" title="Kick">❌</button>`;
     tile.appendChild(ha);
   }
+  if(pinnedSid===sid)tile.classList.add('pinned');else tile.classList.remove('pinned');
   updateGridLayout();
 }
 
@@ -371,7 +397,11 @@ function updateTileVideo(sid){renderPeerTile(sid);}
 function updateGridLayout(){
   const grid=document.getElementById('video-grid');
   const count=grid.children.length;
-  grid.setAttribute('data-count',Math.min(count,10));
+  if(pinnedSid){
+    grid.setAttribute('data-count','pinned');
+  } else {
+    grid.setAttribute('data-count',Math.min(count,10));
+  }
 }
 
 // ===== TOOLBAR =====
@@ -395,6 +425,11 @@ async function toggleScreenShare(){
   if(isScreenSharing){
     stopScreenShareLocal();
     socket.emit('stop_screen_share');
+    return;
+  }
+  // Mobile doesn't support getDisplayMedia
+  if(isMobile){
+    toast('Screen sharing is not supported on mobile devices','error');
     return;
   }
   // Host can share directly, users need permission
@@ -653,3 +688,60 @@ function toast(msg,type){
 function copyRoomCode(){
   navigator.clipboard.writeText(roomCode).then(()=>toast('Code copied!','success')).catch(()=>{});
 }
+
+// ===== PIN / SPOTLIGHT =====
+function pinTile(sid){
+  if(pinnedSid===sid){pinnedSid=null;}else{pinnedSid=sid;}
+  // Re-render all tiles
+  renderLocalTile();
+  Object.keys(peers).forEach(s=>renderPeerTile(s));
+}
+
+// ===== HAND RAISE =====
+function toggleHandRaise(){
+  handRaised=!handRaised;
+  socket.emit('hand_raise',{raised:handRaised});
+  const btn=document.getElementById('btn-hand');
+  if(btn){btn.classList.toggle('active',handRaised);btn.textContent=handRaised?'✋':'🤚';}
+  toast(handRaised?'Hand raised':'Hand lowered');
+}
+
+// ===== EMOJI REACTIONS =====
+function toggleReactions(){
+  const popup=document.getElementById('reactions-popup');
+  if(popup)popup.classList.toggle('open');
+}
+
+function sendEmoji(emoji){
+  socket.emit('emoji_reaction',{emoji});
+  showFloatingEmoji(emoji,currentUser?currentUser.username:'You');
+  const popup=document.getElementById('reactions-popup');
+  if(popup)popup.classList.remove('open');
+}
+
+function showFloatingEmoji(emoji,username){
+  const container=document.getElementById('video-area')||document.querySelector('.video-area');
+  if(!container)return;
+  const el=document.createElement('div');el.className='floating-emoji';
+  el.innerHTML=`<span class="fe-emoji">${emoji}</span><span class="fe-name">${esc(username)}</span>`;
+  el.style.left=Math.random()*60+20+'%';
+  container.appendChild(el);
+  setTimeout(()=>el.remove(),3000);
+}
+
+// ===== FULLSCREEN =====
+function toggleFullscreen(){
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  }else{
+    document.exitFullscreen().catch(()=>{});
+  }
+}
+
+// ===== AUDIO PLAYBACK FIX =====
+document.addEventListener('click',function ensureAudio(){
+  // Resume any suspended AudioContext
+  if(audioContext&&audioContext.state==='suspended')audioContext.resume();
+  // Force play all peer audio elements
+  Object.values(peers).forEach(p=>{if(p.audioEl)p.audioEl.play().catch(()=>{});});
+},{once:false});
