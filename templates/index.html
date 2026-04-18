@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>NexusNet — Video Conferencing</title>
+    <meta name="description" content="Professional video conferencing with group calls, screen sharing, chat, and recording">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- ============ AUTH SCREEN ============ -->
+<div id="auth-screen">
+    <div class="auth-card">
+        <div class="logo">
+            <h1>NexusNet</h1>
+            <p>Professional Video Conferencing</p>
+        </div>
+
+        <!-- Login Form -->
+        <div id="login-form">
+            <div id="login-error" class="auth-error"></div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="login-user" placeholder="Enter username" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="login-pass" placeholder="Enter password" autocomplete="current-password"
+                       onkeypress="if(event.key==='Enter')doLogin()">
+            </div>
+            <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
+            <div class="auth-toggle">
+                Don't have an account? <a onclick="showRegister()">Create one</a>
+            </div>
+        </div>
+
+        <!-- Register Form -->
+        <div id="register-form" style="display:none">
+            <div id="reg-error" class="auth-error"></div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="reg-user" placeholder="Choose username" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="reg-email" placeholder="you@email.com" autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="reg-pass" placeholder="Create password" autocomplete="new-password"
+                       onkeypress="if(event.key==='Enter')doRegister()">
+            </div>
+            <button class="btn btn-primary" onclick="doRegister()">Create Account</button>
+            <div class="auth-toggle">
+                Already have an account? <a onclick="showLogin()">Sign in</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============ LOBBY SCREEN ============ -->
+<div id="lobby-screen" style="display:none">
+    <div class="brand-lobby"><h1>NexusNet</h1></div>
+    <div class="user-bar">
+        <div class="avatar" id="lobby-avatar">U</div>
+        <span id="lobby-user">User</span>
+        <button class="btn btn-sm btn-secondary" onclick="doLogout()" style="padding:6px 12px;font-size:12px">Logout</button>
+    </div>
+
+    <div class="lobby-container">
+        <!-- Create Room Card -->
+        <div class="lobby-card">
+            <div class="icon">🎬</div>
+            <h2>New Meeting</h2>
+            <p>Create a room and invite others</p>
+            <div class="form-group">
+                <input type="text" id="room-name-input" placeholder="Room name (optional)">
+            </div>
+            <button class="btn btn-primary" onclick="createRoom()">Create Room</button>
+        </div>
+
+        <!-- Join Room Card -->
+        <div class="lobby-card">
+            <div class="icon">🔗</div>
+            <h2>Join Meeting</h2>
+            <p>Enter a room code to join</p>
+            <div class="form-group">
+                <input type="text" id="room-code-input" placeholder="6-digit room code" maxlength="6"
+                       onkeypress="if(event.key==='Enter')joinRoom()" style="text-align:center;letter-spacing:4px;font-size:1.3em;font-weight:700">
+            </div>
+            <button class="btn btn-success" onclick="joinRoom()">Join Room</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ MEETING SCREEN ============ -->
+<div id="meeting-screen" style="display:none">
+    <!-- Header -->
+    <div class="meeting-header">
+        <div class="left">
+            <span class="brand">NexusNet</span>
+            <span class="room-code-badge" id="room-code-display" onclick="copyRoomCode()" title="Click to copy">------</span>
+        </div>
+        <div class="right">
+            <span class="timer" id="call-timer">00:00</span>
+        </div>
+    </div>
+
+    <!-- Body -->
+    <div class="meeting-body">
+        <!-- Video Area -->
+        <div class="video-area">
+            <div class="video-grid" id="video-grid" data-count="0"></div>
+        </div>
+
+        <!-- Chat Panel -->
+        <div class="side-panel" id="chat-panel">
+            <div class="panel-header">
+                <h3>💬 Chat</h3>
+                <button class="panel-close" onclick="toggleChat()">✕</button>
+            </div>
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chat-input" placeholder="Type a message..." onkeypress="chatKeyPress(event)" autocomplete="off">
+                <button onclick="sendChat()">Send</button>
+            </div>
+        </div>
+
+        <!-- Participants Panel -->
+        <div class="side-panel" id="participants-panel">
+            <div class="panel-header">
+                <h3>👥 Participants (<span id="participants-count">0</span>)</h3>
+                <button class="panel-close" onclick="toggleParticipants()">✕</button>
+            </div>
+            <div class="participants-list" id="participants-list"></div>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="toolbar-group">
+            <button class="toolbar-btn" id="btn-mic" onclick="toggleAudio()" title="Toggle Microphone">🎤</button>
+            <span class="toolbar-label">Mic</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="toolbar-btn" id="btn-cam" onclick="toggleVideo()" title="Toggle Camera">📹</button>
+            <span class="toolbar-label">Camera</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="toolbar-btn" id="btn-screen" onclick="toggleScreenShare()" title="Share Screen">🖥️</button>
+            <span class="toolbar-label">Share</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="toolbar-btn" id="btn-record" onclick="toggleRecordBtn()" title="Record">⏺️</button>
+            <span class="toolbar-label">Record</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="toolbar-btn" onclick="toggleChat()" title="Chat">
+                💬
+                <span class="badge" id="chat-badge" style="display:none">!</span>
+            </button>
+            <span class="toolbar-label">Chat</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="toolbar-btn" onclick="toggleParticipants()" title="Participants">👥</button>
+            <span class="toolbar-label">People</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="toolbar-btn end-call" onclick="leaveMeeting()" title="Leave Meeting">📞</button>
+            <span class="toolbar-label">Leave</span>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
