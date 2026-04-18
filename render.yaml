@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: nexusnet
+    name: nexus-meeting
     env: docker
     dockerfilePath: ./Dockerfile
     plan: free
