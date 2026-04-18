@@ -962,20 +962,37 @@ body {
 
 /* ========== PIN / SPOTLIGHT ========== */
 .video-grid[data-count="pinned"] {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
 }
 
 .video-grid[data-count="pinned"] .video-tile {
-    max-height: 100px;
+    width: 120px;
+    height: 90px;
     min-height: 80px;
+    flex-shrink: 0;
+    order: 2;
+    border-radius: 10px;
+    margin: 4px;
 }
 
 .video-grid[data-count="pinned"] .video-tile.pinned {
-    grid-column: 1;
-    grid-row: 1;
-    max-height: none;
-    min-height: 300px;
+    width: 100%;
+    flex: 1 1 100%;
+    min-height: 60vh;
+    height: auto;
+    order: 1;
+    border-radius: var(--radius);
+    margin: 0 0 8px 0;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 30px var(--accent-glow);
+}
+
+.video-grid[data-count="pinned"] .video-tile.pinned .avatar-placeholder {
+    width: 120px;
+    height: 120px;
+    font-size: 3em;
 }
 
 .pin-btn {
@@ -987,17 +1004,18 @@ body {
     backdrop-filter: blur(8px);
     border: none;
     color: var(--text-primary);
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 15px;
     display: none;
     align-items: center;
     justify-content: center;
     transition: var(--transition);
 }
 
+.pin-btn:hover { background: var(--accent); transform: scale(1.1); }
 .video-tile:hover .pin-btn { display: flex; }
 .video-tile.pinned .pin-btn { display: flex; background: var(--accent); }
 

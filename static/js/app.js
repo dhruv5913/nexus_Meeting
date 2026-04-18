@@ -249,32 +249,61 @@ async function createPeer(sid,username,initiator){
   const pc=new RTCPeerConnection(ICE);
   const peer={pc,stream:null,username,audio:true,video:true,audioEl:null,pendingIce:[]};
   peers[sid]=peer;
-  if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+  // Add local tracks
+  if(localStream){
+    localStream.getTracks().forEach(t=>{
+      pc.addTrack(t,localStream);
+    });
+  } else {
+    // Add empty transceiver so audio/video is negotiated
+    pc.addTransceiver('audio',{direction:'sendrecv'});
+    pc.addTransceiver('video',{direction:'sendrecv'});
+  }
   pc.ontrack=(e)=>{
     peer.stream=e.streams[0];
     renderPeerTile(sid);
-    // separate audio element for reliable playback
+    // Create audio element for reliable remote audio playback
     if(!peer.audioEl){
-      const a=document.createElement('audio');a.autoplay=true;a.playsInline=true;a.style.display='none';
+      const a=document.createElement('audio');
+      a.autoplay=true;a.playsInline=true;a.volume=1.0;
+      a.style.cssText='position:absolute;opacity:0;pointer-events:none;';
       document.body.appendChild(a);peer.audioEl=a;
     }
     peer.audioEl.srcObject=e.streams[0];
-    // Fix autoplay policy
-    const playPromise=peer.audioEl.play();
-    if(playPromise)playPromise.catch(()=>{document.addEventListener('click',function tryPlay(){peer.audioEl.play().catch(()=>{});document.removeEventListener('click',tryPlay);},{once:true});});
+    // Aggressively try to play audio
+    function tryPlayAudio(){
+      if(!peer.audioEl)return;
+      peer.audioEl.play().then(()=>{
+        console.log('Audio playing for',username);
+      }).catch(()=>{
+        // Retry on any user interaction
+        ['click','touchstart','keydown'].forEach(evt=>{
+          document.addEventListener(evt,function retryPlay(){
+            if(peer.audioEl)peer.audioEl.play().catch(()=>{});
+            document.removeEventListener(evt,retryPlay);
+          },{once:true});
+        });
+      });
+    }
+    tryPlayAudio();
+    // Also retry after a short delay
+    setTimeout(tryPlayAudio,1000);
   };
   pc.onicecandidate=(e)=>{
     if(e.candidate)socket.emit('webrtc_ice',{target_sid:sid,candidate:e.candidate});
   };
   pc.oniceconnectionstatechange=()=>{
-    if(pc.iceConnectionState==='failed'||pc.iceConnectionState==='disconnected'){
-      // try restart
+    if(pc.iceConnectionState==='failed'){
       pc.restartIce&&pc.restartIce();
+    } else if(pc.iceConnectionState==='connected'){
+      // Force play audio when connected
+      if(peer.audioEl)peer.audioEl.play().catch(()=>{});
     }
   };
   if(initiator){
     try{
-      const offer=await pc.createOffer();await pc.setLocalDescription(offer);
+      const offer=await pc.createOffer({offerToReceiveAudio:true,offerToReceiveVideo:true});
+      await pc.setLocalDescription(offer);
       socket.emit('webrtc_offer',{target_sid:sid,offer});
     }catch(e){console.error('Offer error',e);}
   }
@@ -427,9 +456,9 @@ async function toggleScreenShare(){
     socket.emit('stop_screen_share');
     return;
   }
-  // Mobile doesn't support getDisplayMedia
-  if(isMobile){
-    toast('Screen sharing is not supported on mobile devices','error');
+  // Check if getDisplayMedia is available
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){
+    toast('Screen sharing not supported on this device','error');
     return;
   }
   // Host can share directly, users need permission
@@ -444,9 +473,16 @@ async function toggleScreenShare(){
 async function doStartScreenShare(){
   const btn=document.getElementById('btn-screen');
   try{
-    screenStream=await navigator.mediaDevices.getDisplayMedia({video:true});
+    screenStream=await navigator.mediaDevices.getDisplayMedia({video:{cursor:'always'},audio:false});
     const st=screenStream.getVideoTracks()[0];
-    Object.values(peers).forEach(p=>{const sender=p.pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)sender.replaceTrack(st);});
+    if(st.contentHint!==undefined)st.contentHint='detail';
+    // Replace video track in all peer connections
+    const replacePromises=[];
+    Object.values(peers).forEach(p=>{
+      const sender=p.pc.getSenders().find(s=>s.track&&s.track.kind==='video');
+      if(sender)replacePromises.push(sender.replaceTrack(st));
+    });
+    await Promise.all(replacePromises);
     st.onended=()=>{stopScreenShareLocal();socket.emit('stop_screen_share');};
     btn.classList.add('active');
     isScreenSharing=true;
@@ -455,7 +491,7 @@ async function doStartScreenShare(){
     const tile=document.getElementById('tile-local');
     if(tile){tile.innerHTML='';const v=document.createElement('video');v.srcObject=screenStream;v.autoplay=true;v.muted=true;v.playsInline=true;tile.appendChild(v);
       const lbl=document.createElement('div');lbl.className='tile-label';lbl.innerHTML='🖥️ Screen Share';tile.appendChild(lbl);}
-  }catch(e){toast('Screen share cancelled');}
+  }catch(e){toast('Screen share cancelled or not supported');}
 }
 
 function stopScreenShareLocal(){
@@ -501,46 +537,43 @@ function toggleRecordBtn(){
 
 function startRecording(){
   if(!localStream||isRecording)return;
-  // capture all audio+video by combining streams
   const tracks=[];
   if(localStream)localStream.getTracks().forEach(t=>tracks.push(t));
-  // add remote audio
+  // add remote audio tracks
   Object.values(peers).forEach(p=>{if(p.stream)p.stream.getAudioTracks().forEach(t=>tracks.push(t));});
   const combined=new MediaStream(tracks);
   recordedChunks=[];
+  const mimeTypes=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'];
+  let selectedMime='';
+  for(const mime of mimeTypes){if(MediaRecorder.isTypeSupported(mime)){selectedMime=mime;break;}}
   try{
-    mediaRecorder=new MediaRecorder(combined,{mimeType:'video/webm;codecs=vp8,opus'});
-  }catch(e){
-    try{mediaRecorder=new MediaRecorder(combined);}catch(e2){toast('Recording not supported','error');return;}
-  }
+    mediaRecorder=new MediaRecorder(combined,selectedMime?{mimeType:selectedMime}:undefined);
+  }catch(e){toast('Recording not supported on this device','error');return;}
   mediaRecorder.ondataavailable=(e)=>{if(e.data.size>0)recordedChunks.push(e.data);};
-  mediaRecorder.onstop=()=>{uploadRecording();};
+  mediaRecorder.onstop=()=>{saveRecording();};
   mediaRecorder.start(1000);isRecording=true;
   document.getElementById('btn-record').classList.add('active','recording');
-  toast('Recording started','success');
+  toast('⏺ Recording started','success');
 }
 
 function stopRecording(){
   if(!isRecording||!mediaRecorder)return;
   mediaRecorder.stop();isRecording=false;
   document.getElementById('btn-record').classList.remove('active','recording');
-  toast('Recording stopped - uploading...');
+  toast('Recording stopped — saving...');
 }
 
-async function uploadRecording(){
-  const blob=new Blob(recordedChunks,{type:'video/webm'});
-  const fd=new FormData();fd.append('file',blob,'recording.webm');fd.append('room_code',roomCode);
-  try{
-    const r=await fetch('/api/recordings/upload',{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd});
-    if(r.ok){toast('Recording saved!','success');}else{
-      // fallback: download locally
-      const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`recording_${Date.now()}.webm`;a.click();
-      toast('Saved locally');
-    }
-  }catch(e){
-    const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`recording_${Date.now()}.webm`;a.click();
-    toast('Saved locally');
-  }
+function saveRecording(){
+  const ext=mediaRecorder&&mediaRecorder.mimeType&&mediaRecorder.mimeType.includes('mp4')?'mp4':'webm';
+  const blob=new Blob(recordedChunks,{type:mediaRecorder?mediaRecorder.mimeType:'video/webm'});
+  const now=new Date();
+  const ts=now.toISOString().slice(0,19).replace(/[T:]/g,'-');
+  const filename=`NexusMeating_${roomCode}_${ts}.${ext}`;
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  toast(`✅ Recording saved: ${filename}`,'success');
 }
 
 function updateToolbarState(){
